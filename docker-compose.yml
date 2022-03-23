@@ -1,33 +1,63 @@
 ---
 version: "3.7"
+
+volumes:
+  nextcloud-app-config:
+  nextcloud-app-data:
+  nextcloud-mariadb:
+
 services:
-  nextcloud:
-    image: lscr.io/linuxserver/nextcloud
-    container_name: nextcloud
-    environment:
-      - PUID=1024 # The user ID of the current user
-      - PGID=100 # The group ID of the current user
-      - TZ=Europe/Amsterdam # The Timezone where you live
+  nextcloud-app-config-s3: # name given to service
+    image: elementar/s3-volume
+    container_name: nextcloud-app-config-s3 # name given to container
+    command: /data s3://nextcloud-app-config # s3 bucket name
+    env_file:
+      - .env.volume
     volumes:
-      - /volume1/docker/config/Nextcloud:/config
-      - /volume1/docker/Nextcloud:/data
+      - nextcloud-app-config:/data # app configs
+
+  nextcloud-app-data-s3:
+    image: elementar/s3-volume
+    container_name: nextcloud-app-data-s3
+    command: /data s3://nextcloud-app-data
+    env_file:
+      - .env.volume
+    volumes:
+      - nextcloud-app-data:/data # personal data
+
+  nextcloud-mariadb-s3:
+    image: elementar/s3-volume
+    container_name: nextcloud-mariadb-s3
+    command: /data s3://nextcloud-mariadb
+    env_file:
+      - .env.volume
+    volumes:
+    - nextcloud-mariadb:/data
+
+  nextcloud-app:
+    image: lscr.io/linuxserver/nextcloud
+    container_name: nextcloud-app
+    env_file:
+       - .env.app
+    volumes:
+      - nextcloud-app-config:/config
+      - nextcloud-app-data:/data
     ports:
       - 4433:443
     restart: unless-stopped
     depends_on:
-      - mariadb
+      - nextcloud-app-config-s3 # volume proxy container
+      - nextcloud-app-data-s3   # [...]
+      - nextcloud-mariadb-s3
+      - nextcloud-mariadb       # actual service container
 
-  mariadb:
+  nextcloud-mariadb:
     image: lscr.io/linuxserver/mariadb
-    container_name: mariadb
-    environment:
-      - PUID=1024 # The user ID of the current user
-      - PGID=100 # The group ID of the current user
-      - TZ=Europe/Amsterdam # The Timezone where you live
-      - MYSQL_ROOT_PASSWORD=supersecretpassword
-      - MYSQL_DATABASE=nextclouddatabase
-      - MYSQL_USER=nextcloud
-      - MYSQL_PASSWORD=nextcloud
+    container_name: nextcloud-mariadb
+    env_file:
+      - .env.mariadb
     volumes:
-      - /volume1/docker/config/MariaDB:/config
+      - nextcloud-mariadb:/config
     restart: unless-stopped
+    depends_on:
+      - nextcloud-mariadb-s3
